@@ -6,17 +6,24 @@
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 :- op(900, xfy, '::').
+:- op(900, xfy, '::').
+:- discontiguous (::)/2.
+% Disable singleton-variable warnings in this file: many invariants use intentionally-ignored vars
+:- if(current_predicate(style_check/1)).
+:- style_check(-singleton).
+:- endif.
 :- discontiguous paciente/5.
 :- discontiguous consulta/7.
 :- discontiguous excecao/1.
 :- discontiguous interdito/1.
 :- discontiguous (-)/1.
+:- discontiguous impreciso/2.
 :- dynamic (paciente/5).
 :- dynamic (consulta/7).
 :- dynamic (ta/6).
 :- dynamic (excecao/1).
 :- dynamic ('-'/1).
-:- dynamic impreciso/2.
+:- dynamic (impreciso/2).
 
 % ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 % --- Sistemas de inferência -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -108,7 +115,7 @@ pertence(N, [_|Tail]) :-
 
 % Extensao do meta-predicado nao: Questao -> {V,F}.
 nao(Questao):- Questao, !, fail.
-nao(Questao).
+nao(_).
 
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 % --- SISTEMA UNIFICADO DE INFERÊNCIA PARA TENSÃO ARTERIAL-------------------------------------------------------------------------------------------------------------------------------------------
@@ -158,6 +165,17 @@ gerar_classificacoes(SistPossiveis, DiasPossiveis, Classificacoes) :-
         classifica_ta(Sist, Dias, Class)
     ), Classificacoes).
 
+% Wrapper compatível: classificacao_consulta/2
+% Retorna a lista de classificações possíveis para uma consulta.
+classificacao_consulta(ConsultaId, Possiveis) :-
+    obter_valores_possiveis(ConsultaId, SistPossiveis, DiasPossiveis),
+    gerar_classificacoes(SistPossiveis, DiasPossiveis, Classificacoes),
+    (   Classificacoes == [] ->
+        Possiveis = [desconhecido]
+    ;   list_to_set(Classificacoes, Unicas),
+        sort(Unicas, Possiveis)
+    ).
+
 % Consolidar resultados e calcular confiança
 consolidar_resultados(Classificacoes, Classificacao, Confianca) :-
     (   Classificacoes = [] -> 
@@ -197,6 +215,8 @@ classifica_ta(Sist, Dias, 'Pre-hipertensao') :-
     Sist >= 120, Sist =< 129.
 classifica_ta(Sist, Dias, 'Normal') :-
     Sist < 120, Dias < 80.
+
+
 
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 % --- SISTEMA DE RELATÓRIOS MÉDICOS DOS PACIENTES ----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -243,7 +263,15 @@ relatorio_rapido_paciente(PacienteId) :-
     format('Última consulta: ~w (Idade: ~w)~n', [Data, Idade]),
     format('Tensão: ~w/~w~n', [Sist, Dias]),
     format('Classificação: ~w (Confiança: ~2f)~n', [Classificacao, Confianca]),
-    format('Tendência: ~w~n', [Tendencia]).
+    format('Tendência: ~w~n', [Tendencia]),
+    estatisticas_paciente(PacienteId, Estatisticas),
+    format('Comparação com média: ~w~n', [comparar_com_media(Sist, Dias, Estatisticas)]).
+
+% Novo predicado para comparação
+comparar_com_media(Sist, Dias, estatisticas(MediaSist, MediaDias, _, _, _)) :-
+    (Sist > MediaSist + 10 -> 'ACIMA da média histórica' ;
+     Sist < MediaSist - 10 -> 'ABAIXO da média histórica' ;
+     'Dentro da média histórica').
 
 % Obter todas as consultas de um paciente
 consultas_paciente(PacienteId, Consultas) :-
@@ -408,11 +436,11 @@ condicao_critica(PacienteId) :-
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % Extensao do predicado paciente:  IdPaciente, Nome, (Dia,Mes,Ano), Sexo, Morada -> {V,F,D}
-paciente(p100, 'Joao Silva', (10,5,1980), M, 'Rua A, 12').
-paciente(p200, 'Maria Costa', (1,3,1972), F, 'Rua B, 4').
-paciente(p300, 'Rui Pereira', (15,8,1950), M, 'Rua C, 7').
-paciente(p400, 'Ana Santos', (12,12,1990), F, 'Rua D, 8').
-paciente(p500, 'Carlos Lima', (5,7,1985), M, 'Rua E, 10').
+paciente(p100, 'Joao Silva', (10,5,1980), m, 'Rua A, 12').
+paciente(p200, 'Maria Costa', (1,3,1972), f, 'Rua B, 4').
+paciente(p300, 'Rui Pereira', (15,8,1950), m, 'Rua C, 7').
+paciente(p400, 'Ana Santos', (12,12,1990), f, 'Rua D, 8').
+paciente(p500, 'Carlos Lima', (5,7,1985), m, 'Rua E, 10').
 
 % Extensao do predicado consulta:  IdConsulta, (Dia,Mes,Ano), IdPaciente, Idade, Sistólica, Diastólica, Pulsação -> {V,F,D}
 consulta(c100, (15,10,2025), p100, 45, 132, 85, 72).  % Hipertensão Estágio 1
@@ -472,10 +500,11 @@ validar([R|LR]):- R, validar(LR).
 
 
 % Nao permitir a insercao de paciente com a idade fora de um intervalo prático (ex.: 0 < idade < 130)
+% usa variáveis D e M nas invariantes quando são referenciadas múltiplas vezes
 +paciente(_,_,(D,M,A),_,_):: (A >= 1900, A =< 2100). % garante ano plausível
 
 % Nao permitir mes fora do intervalo 1..12
-+paciente(_,_,(_,M,_),_,_):: (M>=1, M=<12).
++paciente(_,_,(D,M,_),_,_):: (M>=1, M=<12).
 
 % dias válidos para meses com 31 dias
 (+paciente(_,_,(D,M,_),_,_)::(D>=1, D=<31)):- pertence(M,[1,3,5,7,8,10,12]).
@@ -505,14 +534,14 @@ validar([R|LR]):- R, validar(LR).
 +consulta(_,(_,_,_),_,Idade,_,_,_):: (Idade>=0, Idade=<130).
 
 % Mes válido
-+consulta(_,(_,M,_),_,_,_,_,_):: (M>=1, M=<12).
++consulta(_, (D,M,_),_,_,_,_,_):: (M>=1, M=<12).
 
 % dias válidos (meses 31)
-(+consulta(_,(D,M,_),_,_,_,_,_)::(D>=1, D=<31)):- pertence(M,[1,3,5,7,8,10,12]).
+(+consulta(_, (D,M,_),_,_,_,_,_)::(D>=1, D=<31)):- pertence(M,[1,3,5,7,8,10,12]).
 % dias válidos (meses 30)
-(+consulta(_,(D,M,_),_,_,_,_,_)::(D>=1, D=<30)):- pertence(M,[4,6,9,11]).
+(+consulta(_, (D,M,_),_,_,_,_,_)::(D>=1, D=<30)):- pertence(M,[4,6,9,11]).
 % fevereiro simplificado até 29
-(+consulta(_,(D,M,A),_,_,_,_,_):: (D>=1, D=<29)):- (M==2).
+(+consulta(_, (D,M,A),_,_,_,_,_):: (D>=1, D=<29)):- (M==2).
 
 % Pressões sistólica e diastólica plausíveis (Sist 0..300, Dias 0..200), ou impreciso/desconhecido/interdito
 +consulta(_,_,_,_,S,DI,_):: ( (integer(S), S>=0, S=<300) ; S = impreciso(_,_) ; S = desconhecido ; S = alguemX ).
@@ -566,20 +595,20 @@ teste([R|LR]):-R,teste(LR).
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % O paciente Alex SemAbrigo não tem morada fixa conhecida
-paciente(555111, 'Alex SemAbrigo', (8,7,1985), M, nenhum).
-excecao(paciente(Id,Nome,Data,Sexo,Morada)) :- paciente(Id,Nome,Data,Sexo,nenhum).
+paciente(555111, 'Alex SemAbrigo', (8,7,1985), m, nenhum).
+excecao(paciente(Id,Nome,Data,Sexo,nenhum)) :- paciente(Id,Nome,Data,Sexo,nenhum).
 
 % O paciente Marta não recorda o dia exato de nascimento
 paciente(666222, 'Marta Oliveira', desconhecido, f, 'Rua do Sol, 10').
-excecao(paciente(Id,Nome,Data,Sexo,Morada)) :- paciente(Id,Nome,desconhecido,Sexo,Morada).
+excecao(paciente(Id,Nome,desconhecido,Sexo,Morada)) :- paciente(Id,Nome,desconhecido,Sexo,Morada).
 
 % Consulta em que a pulsação não foi registada (valor desconhecido)
 consulta(c300, (1,10,2025), p300, 75, 150, 95, desconhecido).
-excecao(consulta(IdC, D, P, I, S, DI, Puls)) :- consulta(IdC, D, P, I, S, DI, desconhecido).
+excecao(consulta(IdC, D, P, I, S, DI, desconhecido)) :- consulta(IdC, D, P, I, S, DI, desconhecido).
 
 % Consulta de um paciente cujo valor diastólico não foi anotado
 consulta(c301, (5,10,2025), p200, 53, 132, desconhecido, 74).
-excecao(consulta(IdC, D, P, I, S, DI, Puls)) :- consulta(IdC, D, P, I, S, desconhecido, Puls).
+excecao(consulta(IdC, D, P, I, S, desconhecido, Puls)) :- consulta(IdC, D, P, I, S, desconhecido, Puls).
 
 
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -587,8 +616,8 @@ excecao(consulta(IdC, D, P, I, S, DI, Puls)) :- consulta(IdC, D, P, I, S, descon
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % Paciente com dúvida no ano de nascimento (1959 ou 1960)
-excecao(paciente(777888, 'Francisco', (23,10,1959), M, 'Sao Tome')).
-excecao(paciente(777888, 'Francisco', (23,10,1960), M, 'Sao Tome')).
+excecao(paciente(777888, 'Francisco', (23,10,1959), m, 'Sao Tome')).
+excecao(paciente(777888, 'Francisco', (23,10,1960), m, 'Sao Tome')).
 
 % Paciente que sabe apenas que nasceu em novembro, sem lembrar o dia
 excecao(paciente(222333, 'Helena', (1,11,1980), f, 'Porto')).
@@ -615,17 +644,17 @@ excecao(consulta(c402, (4,10,2025), p400, 30, 138, 85, 70)).
 
 % Paciente recusa revelar a morada
 paciente(888777, 'Celeb', (5,5,1980), f, alguem_morada).
-excecao(paciente(Id,Nome,Data,Sexo,M)) :- paciente(Id,Nome,Data,Sexo,alguem_morada).
+excecao(paciente(Id,Nome,Data,Sexo,alguem_morada)) :- paciente(Id,Nome,Data,Sexo,alguem_morada).
 interdito(alguem_morada).
 
 % Consulta com valor sistólico interdito (não pode ser revelado)
-consulta(c500, (4,10,2025), 888777, 45, alguem_sist, 80, 70).
-excecao(consulta(Id, D, P, I, S, DI, Puls)) :- consulta(Id, D, P, I, alguem_sist, DI, Puls).
+consulta(c500i, (4,10,2025), 888777, 45, alguem_sist, 80, 70).
+excecao(consulta(Id, D, P, I, alguem_sist, DI, Puls)) :- consulta(Id, D, P, I, alguem_sist, DI, Puls).
 interdito(alguem_sist).
 
 % Consulta com valor diastólico interdito
 consulta(c501, (5,10,2025), 888777, 45, 145, alguem_dias, 72).
-excecao(consulta(Id, D, P, I, S, DI, Puls)) :- consulta(Id, D, P, I, S, alguem_dias, Puls).
+excecao(consulta(Id, D, P, I, S, alguem_dias, Puls)) :- consulta(Id, D, P, I, S, alguem_dias, Puls).
 interdito(alguem_dias).
 
 % Invariantes que impedem inserção de dados no parâmetro interdito
@@ -634,7 +663,7 @@ interdito(alguem_dias).
      comprimento(S,N), N==0).
 
 +consulta(Id,(_,_,_),P,_,S,_,_):: 
-    (findall(S,(consulta(c500,(_,_,_),888777,_,S,_,_),nao(interdito(S))),SList),
+    (findall(S,(consulta(c500i,(_,_,_),888777,_,S,_,_),nao(interdito(S))),SList),
      comprimento(SList,N2), N2==0).
 
 +consulta(Id,(_,_,_),P,_,_,D,_):: 

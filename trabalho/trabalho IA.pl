@@ -205,11 +205,11 @@ classificacao_consulta_aggregate(ConsultaId, PossFinal) :-
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % Extensao do predicado paciente:  IdPaciente, Nome, (Dia,Mes,Ano), Sexo, Morada -> {V,F,D}
-paciente(p100, 'Joao Silva', (10,5,1980), M, 'Rua A, 12').
-paciente(p200, 'Maria Costa', (1,3,1972), F, 'Rua B, 4').
-paciente(p300, 'Rui Pereira', (15,8,1950), M, 'Rua C, 7').
-paciente(p400, 'Ana Santos', (12,12,1990), F, 'Rua D, 8').
-paciente(p500, 'Carlos Lima', (5,7,1985), M, 'Rua E, 10').
+paciente(p100, 'Joao Silva', (10,5,1980), m, 'Rua A, 12').
+paciente(p200, 'Maria Costa', (1,3,1972), f, 'Rua B, 4').
+paciente(p300, 'Rui Pereira', (15,8,1950), m, 'Rua C, 7').
+paciente(p400, 'Ana Santos', (12,12,1990), f, 'Rua D, 8').
+paciente(p500, 'Carlos Lima', (5,7,1985), m, 'Rua E, 10').
 
 % Extensao do predicado consulta:  IdConsulta, (Dia,Mes,Ano), IdPaciente, Idade, Sistólica, Diastólica, Pulsação -> {V,F,D}
 consulta(c100, (15,10,2025), p100, 45, 132, 85, 72).  % Hipertensão Estágio 1
@@ -363,7 +363,7 @@ teste([R|LR]):-R,teste(LR).
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % O paciente Alex SemAbrigo não tem morada fixa conhecida
-paciente(555111, 'Alex SemAbrigo', (8,7,1985), M, nenhum).
+paciente(555111, 'Alex SemAbrigo', (8,7,1985), m, nenhum).
 excecao(paciente(Id,Nome,Data,Sexo,Morada)) :- paciente(Id,Nome,Data,Sexo,nenhum).
 
 % O paciente Marta não recorda o dia exato de nascimento
@@ -384,8 +384,8 @@ excecao(consulta(IdC, D, P, I, S, DI, Puls)) :- consulta(IdC, D, P, I, S, descon
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 % Paciente com dúvida no ano de nascimento (1959 ou 1960)
-excecao(paciente(777888, 'Francisco', (23,10,1959), M, 'Sao Tome')).
-excecao(paciente(777888, 'Francisco', (23,10,1960), M, 'Sao Tome')).
+excecao(paciente(777888, 'Francisco', (23,10,1959), m, 'Sao Tome')).
+excecao(paciente(777888, 'Francisco', (23,10,1960), m, 'Sao Tome')).
 
 % Paciente que sabe apenas que nasceu em novembro, sem lembrar o dia
 excecao(paciente(222333, 'Helena', (1,11,1980), f, 'Porto')).
@@ -412,12 +412,12 @@ excecao(consulta(c402, (4,10,2025), p400, 30, 138, 85, 70)).
 
 % Paciente recusa revelar a morada
 paciente(888777, 'Celeb', (5,5,1980), f, alguem_morada).
-excecao(paciente(Id,Nome,Data,Sexo,M)) :- paciente(Id,Nome,Data,Sexo,alguem_morada).
+excecao(paciente(Id,Nome,Data,Sexo,_Morada)) :- paciente(Id,Nome,Data,Sexo,alguem_morada).
 interdito(alguem_morada).
 
 % Consulta com valor sistólico interdito (não pode ser revelado)
-consulta(c500, (4,10,2025), 888777, 45, alguem_sist, 80, 70).
-excecao(consulta(Id, D, P, I, S, DI, Puls)) :- consulta(Id, D, P, I, alguem_sist, DI, Puls).
+consulta(c500i, (4,10,2025), 888777, 45, alguem_sist, 80, 70).
+excecao(consulta(Id, D, P, I, alguem_sist, DI, Puls)) :- consulta(Id, D, P, I, alguem_sist, DI, Puls).
 interdito(alguem_sist).
 
 % Consulta com valor diastólico interdito
@@ -426,12 +426,12 @@ excecao(consulta(Id, D, P, I, S, DI, Puls)) :- consulta(Id, D, P, I, S, alguem_d
 interdito(alguem_dias).
 
 % Invariantes que impedem inserção de dados no parâmetro interdito
-+paciente(Id,Nome,Data,Sexo,M):: 
-    (findall(M,(paciente(888777,'Celeb',(5,5,1980),f,M),nao(interdito(M))),S),
+ +paciente(Id,Nome,Data,Sexo,_M):: 
+    (findall(Morada,(paciente(888777,'Celeb',(5,5,1980),f,Morada),nao(interdito(Morada))),S),
      comprimento(S,N), N==0).
 
 +consulta(Id,(_,_,_),P,_,S,_,_):: 
-    (findall(S,(consulta(c500,(_,_,_),888777,_,S,_,_),nao(interdito(S))),SList),
+    (findall(S,(consulta(c500i,(_,_,_),888777,_,S,_,_),nao(interdito(S))),SList),
      comprimento(SList,N2), N2==0).
 
 +consulta(Id,(_,_,_),P,_,_,D,_):: 
@@ -483,7 +483,7 @@ inserir_impreciso_consulta(IdC, (Dia,Mes,Ano), IdP, Idade, Sist2, Diast, Puls) :
 
 perfeito_incerto_paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada):- 
     involucao(paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada)),
-    evolucao(excecao(paciente(Id,Nome,(Dia,Mes,Ano),Sexo,M)) :- paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada)).
+    evolucao(excecao(paciente(Id,Nome,(Dia,Mes,Ano),Sexo,_M)) :- paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada)).
 
 perfeito_incerto_consulta(IdC,(Dia,Mes,Ano),IdP,Idade,Sist,Diast,Puls):- 
     involucao(consulta(IdC,(Dia,Mes,Ano),IdP,Idade,Sist,Diast,Puls)),
