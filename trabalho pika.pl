@@ -6,9 +6,7 @@
 % ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 :- op(900, xfy, '::').
-:- op(900, xfy, '::').
 :- discontiguous (::)/2.
-% Disable singleton-variable warnings in this file: many invariants use intentionally-ignored vars
 :- if(current_predicate(style_check/1)).
 :- style_check(-singleton).
 :- endif.
@@ -799,3 +797,12 @@ neg_pos(IdP,IdC):-
     involucao(-paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada)),
     evolucao(consulta(IdC,(D,M,A),IdP,Idade,Sist,Diast,Puls)),
     evolucao(paciente(IdP,Nome,(Dia,Mes,Ano),Sexo,Morada)).
+
+
+listar_pacientes :-
+    writeln('=== Lista de Pacientes ==='),
+    forall(
+        paciente(Id, Nome, Data, Sexo, Morada),
+        format('~w - ~w (~w, ~w, morada: ~w)~n',
+               [Id, Nome, Data, Sexo, Morada])
+    ).
